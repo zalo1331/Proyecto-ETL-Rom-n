@@ -317,6 +317,24 @@ def test_pasarela_pago_se_guarda_en_la_base(ruta_db):
     assert fila == ("NO_APLICA", "PayPal")
 
 
+def test_base_con_esquema_anterior_se_recrea(ruta_db):
+    tabla_vieja = database.DDL_TABLAS["transacciones_limpias"][0].replace(
+        "    pasarela_pago        TEXT,\n", ""
+    )
+    with sqlite3.connect(ruta_db) as conn:
+        conn.execute(tabla_vieja)
+        columnas = [c[1] for c in conn.execute("PRAGMA table_info(transacciones_limpias)")]
+    assert "pasarela_pago" not in columnas
+
+    r = validar_lote([registro_online(pasarela_pago="PayPal")], CATALOGO)
+    res = database.cargar_resultados(r.limpios, r.cuarentena, ruta_db)
+    assert res.estado == "COMMIT", res.error
+    with sqlite3.connect(ruta_db) as conn:
+        columnas = [c[1] for c in conn.execute("PRAGMA table_info(transacciones_limpias)")]
+        pasarela = conn.execute("SELECT pasarela_pago FROM transacciones_limpias").fetchone()
+    assert "pasarela_pago" in columnas and pasarela == ("PayPal",)
+
+
 def test_carga_con_dataframes_vacios(ruta_db):
     res = database.cargar_resultados(pd.DataFrame(), pd.DataFrame(), ruta_db)
     assert res.exitosa and res.filas_limpias == 0
