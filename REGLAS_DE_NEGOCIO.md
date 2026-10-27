@@ -93,7 +93,7 @@ El total nulo de tienda física es un caso aparte: aunque sea MCAR, el valor se 
 | Categórica | Etiqueta `ANONIMO` |
 | `monto_total` | Siempre se recalcula como `cantidad × precio`, haya o no nulo |
 
-Se usa la mediana y no la media porque las variables numéricas están muy sesgadas a la derecha. La asimetría se midió con el coeficiente de Fisher-Pearson sin corrección por tamaño de muestra (`scipy.stats.skew`); con `pandas.Series.skew()`, que sí la corrige, los valores suben en la segunda decimal.
+Se usa la mediana y no la media porque las variables numéricas están muy sesgadas a la derecha. La asimetría se midió con el coeficiente de Fisher-Pearson sin corrección por tamaño de muestra (`scipy.stats.skew`); con `pandas.Series.skew()`, que sí la corrige, los valores de cantidad y monto suben en la segunda decimal y el del precio no cambia.
 
 | Variable | Asimetría | Media | Mediana |
 |---|---:|---:|---:|
