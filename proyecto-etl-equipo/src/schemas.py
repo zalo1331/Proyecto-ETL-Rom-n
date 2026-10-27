@@ -361,11 +361,12 @@ def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     """Renombra columnas conocidas al nombre que espera el esquema."""
     df = df.copy()
     df.columns = [str(c).strip().lower() for c in df.columns]
-    renombres = {
-        viejo: nuevo
-        for viejo, nuevo in ALIAS_COLUMNAS.items()
-        if viejo in df.columns and nuevo not in df.columns
-    }
+    # Cada destino se asigna una sola vez: si dos alias apuntan al mismo nombre,
+    # se renombra el primero de ALIAS_COLUMNAS y el otro conserva el suyo.
+    renombres: dict[str, str] = {}
+    for viejo, nuevo in ALIAS_COLUMNAS.items():
+        if viejo in df.columns and nuevo not in df.columns and nuevo not in renombres.values():
+            renombres[viejo] = nuevo
     return df.rename(columns=renombres)
 
 

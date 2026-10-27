@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import database
 from src.schemas import (  # noqa: E402
+    normalizar_columnas,
     rechazos_a_cuarentena,
     validar_clabe,
     validar_lote,
@@ -219,6 +220,22 @@ def test_dataframe_con_columnas_de_transformacion():
     assert len(r.limpios) == 1
     assert r.limpios.loc[0, "estado_orden"] == "COMPLETADO"
     assert r.limpios.loc[0, "monto_normalizado"] == 0.4
+
+
+def test_alias_al_mismo_destino_no_duplican_columnas():
+    df = pd.DataFrame({
+        "id_ticket": ["POS-2026-0001"], "order_id": ["WEB-00001"],
+        "precio_unitario": [10.0], "unit_price": [20.0],
+    })
+    columnas = list(normalizar_columnas(df).columns)
+    assert len(columnas) == len(set(columnas))
+    assert columnas == ["id_transaccion", "order_id", "precio_unitario", "precio_unitario_mxn"]
+
+    # Si el destino ya existe, ninguno de los alias se renombra.
+    df = df.assign(id_transaccion="POS-2026-0002")
+    columnas = list(normalizar_columnas(df).columns)
+    assert len(columnas) == len(set(columnas))
+    assert {"id_ticket", "order_id", "id_transaccion"} <= set(columnas)
 
 
 def test_volumen_aleatorio_conserva_todos_los_registros():
