@@ -121,6 +121,12 @@ def test_correo_ausente_o_anonimo_se_acepta(correo):
     assert len(r.limpios) == 1
 
 
+def test_venta_fisica_con_correo_no_aplica():
+    r = validar_lote([registro_valido(correo_cliente="NO_APLICA")], CATALOGO)
+    assert len(r.limpios) == 1 and r.cuarentena.empty
+    assert r.limpios.loc[0, "correo_cliente"] == "NO_APLICA"
+
+
 def test_bot_con_monto_inflado_no_cuadra():
     # WEB-00508 del JSON: 3 piezas de 3443.17 con total de 826,360.80
     r = validar_lote([registro_online(cantidad=3, precio_unitario_mxn=3443.17,
@@ -203,6 +209,16 @@ def test_dataframe_con_nombres_originales():
     r = validar_lote(df, CATALOGO)
     assert len(r.limpios) == 1
     assert r.limpios.loc[0, "estado_orden"] == "COMPLETADO"
+
+
+def test_dataframe_con_columnas_de_transformacion():
+    """estado_pedido y monto_total_norm llegan como estado_orden y monto_normalizado."""
+    fila = registro_online(estado_pedido="completado", monto_total_norm=0.4)
+    del fila["monto_normalizado"]
+    r = validar_lote(pd.DataFrame([fila]), CATALOGO)
+    assert len(r.limpios) == 1
+    assert r.limpios.loc[0, "estado_orden"] == "COMPLETADO"
+    assert r.limpios.loc[0, "monto_normalizado"] == 0.4
 
 
 def test_volumen_aleatorio_conserva_todos_los_registros():
@@ -289,6 +305,16 @@ def test_rollback_por_llave_duplicada(ruta_db):
     res = database.cargar_resultados(duplicado, r.cuarentena, ruta_db)
     assert res.estado == "ROLLBACK"
     assert contar(ruta_db, "transacciones_limpias") == 0
+
+
+def test_pasarela_pago_se_guarda_en_la_base(ruta_db):
+    r = validar_lote([registro_online(metodo_pago="NO_APLICA", pasarela_pago="PayPal")], CATALOGO)
+    assert database.cargar_resultados(r.limpios, r.cuarentena, ruta_db).exitosa
+    with sqlite3.connect(ruta_db) as conn:
+        fila = conn.execute(
+            "SELECT metodo_pago, pasarela_pago FROM transacciones_limpias"
+        ).fetchone()
+    assert fila == ("NO_APLICA", "PayPal")
 
 
 def test_carga_con_dataframes_vacios(ruta_db):

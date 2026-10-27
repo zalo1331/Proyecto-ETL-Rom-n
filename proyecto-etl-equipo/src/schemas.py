@@ -44,7 +44,7 @@ TOLERANCIA_MONTO = 0.01
 VALIDAR_CONSISTENCIA_MONTO = True
 
 SEGMENTOS_VALIDOS = ("Bajo", "Medio", "Alto")
-VALORES_ANONIMOS = {"ANONIMO", "SIN_CORREO", "NO_REGISTRADO"}
+VALORES_ANONIMOS = {"ANONIMO", "SIN_CORREO", "NO_REGISTRADO", "NO_APLICA"}
 
 PATRON_ID_PRODUCTO = re.compile(r"^PROD-\d{3}$")
 PATRON_ID_TRANSACCION = re.compile(r"^(POS-\d{4}-\d{4}|WEB-\d{5})$")
@@ -71,8 +71,10 @@ ALIAS_COLUMNAS = {
     "customer_email": "correo_cliente",
     "payment_gateway": "metodo_pago",
     "order_status": "estado_orden",
+    "estado_pedido": "estado_orden",
     "currency": "moneda",
     "monto_minmax": "monto_normalizado",
+    "monto_total_norm": "monto_normalizado",
     "segmento": "segmento_monto",
     "huerfano": "es_huerfano",
 }
@@ -156,6 +158,7 @@ class TransaccionLimpia(BaseModel):
     monto_total_mxn: float = Field(gt=0)
     moneda: Literal["MXN"] = "MXN"
     metodo_pago: str = Field(min_length=1)
+    pasarela_pago: Optional[str] = None
     sucursal: Optional[str] = None
     id_cliente: Optional[str] = None
     correo_cliente: Optional[str] = None

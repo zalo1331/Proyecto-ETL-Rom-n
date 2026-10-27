@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS transacciones_limpias (
     monto_total_mxn      REAL NOT NULL CHECK (monto_total_mxn > 0),
     moneda               TEXT NOT NULL DEFAULT 'MXN' CHECK (moneda = 'MXN'),
     metodo_pago          TEXT NOT NULL,
+    pasarela_pago        TEXT,
     sucursal             TEXT,
     id_cliente           TEXT,
     correo_cliente       TEXT,
@@ -94,7 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_cuarentena_etapa ON cuarentena_errores(etapa);
 COLUMNAS_LIMPIAS_BD = [
     "id_transaccion", "canal", "fecha", "id_producto", "cantidad",
     "precio_unitario_mxn", "monto_total_mxn", "moneda", "metodo_pago",
-    "sucursal", "id_cliente", "correo_cliente", "estado_orden", "clabe",
+    "pasarela_pago", "sucursal", "id_cliente", "correo_cliente", "estado_orden", "clabe",
     "monto_normalizado", "segmento_monto",
 ]
 
