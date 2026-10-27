@@ -147,6 +147,7 @@ def tratar_outliers(df: pd.DataFrame) -> pd.DataFrame:
             upper=limite_superior,
         )
 
+    limpio["cantidad"] = np.floor(limpio["cantidad"]).clip(lower=1).astype("int64")
     _recalcular_monto_total(limpio)
     return limpio
 

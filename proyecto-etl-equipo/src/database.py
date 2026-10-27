@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 # En la carpeta del proyecto, sin importar el directorio de ejecución.
 RUTA_DB_DEFAULT = Path(__file__).resolve().parents[1] / "pipeline_database.db"
 
-DDL = """
+DDL_BITACORA = """
 CREATE TABLE IF NOT EXISTS bitacora_cargas (
     id_carga          INTEGER PRIMARY KEY AUTOINCREMENT,
     inicio            TEXT NOT NULL,
@@ -42,8 +42,13 @@ CREATE TABLE IF NOT EXISTS bitacora_cargas (
     filas_limpias     INTEGER DEFAULT 0,
     filas_cuarentena  INTEGER DEFAULT 0,
     mensaje           TEXT
-);
+)
+"""
 
+# Sentencias por tabla, una por execute(): executescript() hace COMMIT
+# implícito y no se puede usar dentro de la transacción de carga.
+DDL_TABLAS = {
+    "catalogo_productos": ["""
 CREATE TABLE IF NOT EXISTS catalogo_productos (
     id_producto      TEXT PRIMARY KEY,
     nombre_producto  TEXT,
@@ -51,8 +56,9 @@ CREATE TABLE IF NOT EXISTS catalogo_productos (
     precio_base_mxn  REAL CHECK (precio_base_mxn IS NULL OR precio_base_mxn > 0),
     stock_minimo     INTEGER,
     proveedor        TEXT
-);
-
+)
+"""],
+    "transacciones_limpias": ["""
 CREATE TABLE IF NOT EXISTS transacciones_limpias (
     id_transaccion       TEXT PRIMARY KEY,
     canal                TEXT NOT NULL CHECK (canal IN ('TIENDA_FISICA', 'ONLINE')),
@@ -63,6 +69,7 @@ CREATE TABLE IF NOT EXISTS transacciones_limpias (
     monto_total_mxn      REAL NOT NULL CHECK (monto_total_mxn > 0),
     moneda               TEXT NOT NULL DEFAULT 'MXN' CHECK (moneda = 'MXN'),
     metodo_pago          TEXT NOT NULL,
+    pasarela_pago        TEXT,
     sucursal             TEXT,
     id_cliente           TEXT,
     correo_cliente       TEXT,
@@ -72,8 +79,12 @@ CREATE TABLE IF NOT EXISTS transacciones_limpias (
     segmento_monto       TEXT CHECK (segmento_monto IS NULL OR segmento_monto IN ('Bajo', 'Medio', 'Alto')),
     id_carga             INTEGER REFERENCES bitacora_cargas(id_carga),
     fecha_carga          TEXT NOT NULL
-);
-
+)
+""",
+        "CREATE INDEX IF NOT EXISTS idx_limpias_fecha    ON transacciones_limpias(fecha)",
+        "CREATE INDEX IF NOT EXISTS idx_limpias_producto ON transacciones_limpias(id_producto)",
+    ],
+    "cuarentena_errores": ["""
 CREATE TABLE IF NOT EXISTS cuarentena_errores (
     id_error                   INTEGER PRIMARY KEY AUTOINCREMENT,
     id_origen                  TEXT,
@@ -84,17 +95,16 @@ CREATE TABLE IF NOT EXISTS cuarentena_errores (
     registro_original          TEXT NOT NULL,
     fecha_rechazo              TEXT NOT NULL,
     id_carga                   INTEGER REFERENCES bitacora_cargas(id_carga)
-);
-
-CREATE INDEX IF NOT EXISTS idx_limpias_fecha    ON transacciones_limpias(fecha);
-CREATE INDEX IF NOT EXISTS idx_limpias_producto ON transacciones_limpias(id_producto);
-CREATE INDEX IF NOT EXISTS idx_cuarentena_etapa ON cuarentena_errores(etapa);
-"""
+)
+""",
+        "CREATE INDEX IF NOT EXISTS idx_cuarentena_etapa ON cuarentena_errores(etapa)",
+    ],
+}
 
 COLUMNAS_LIMPIAS_BD = [
     "id_transaccion", "canal", "fecha", "id_producto", "cantidad",
     "precio_unitario_mxn", "monto_total_mxn", "moneda", "metodo_pago",
-    "sucursal", "id_cliente", "correo_cliente", "estado_orden", "clabe",
+    "pasarela_pago", "sucursal", "id_cliente", "correo_cliente", "estado_orden", "clabe",
     "monto_normalizado", "segmento_monto",
 ]
 
@@ -138,7 +148,17 @@ def conectar(ruta_db: str | Path = RUTA_DB_DEFAULT) -> sqlite3.Connection:
 
 
 def crear_tablas(conn: sqlite3.Connection) -> None:
-    conn.executescript(DDL)
+    conn.execute(DDL_BITACORA)
+    for sentencias in DDL_TABLAS.values():
+        for sql in sentencias:
+            conn.execute(sql)
+
+
+def _recrear_tabla(conn: sqlite3.Connection, tabla: str) -> None:
+    """DROP y CREATE con el esquema actual; sus índices se crean de nuevo."""
+    conn.execute(f"DROP TABLE IF EXISTS {tabla}")
+    for sql in DDL_TABLAS[tabla]:
+        conn.execute(sql)
 
 
 def _a_filas(df: Optional[pd.DataFrame], columnas: list[str]) -> list[tuple]:
@@ -170,9 +190,11 @@ def cargar_resultados(
     """
     Escribe limpios y cuarentena en una sola transacción.
 
-    reemplazar=True vacía las tablas antes de insertar, de modo que correr
-    el pipeline dos veces deja la misma base y no duplica registros. La
-    bitácora nunca se borra.
+    reemplazar=True borra y vuelve a crear las tablas antes de insertar, de
+    modo que correr el pipeline dos veces deja la misma base, sin duplicados,
+    y una base creada con un esquema anterior queda con el esquema actual.
+    El catálogo solo se recrea si se pasa df_catalogo. La bitácora nunca se
+    borra.
     """
     conn = None
     id_carga = None
@@ -195,11 +217,13 @@ def cargar_resultados(
 
         conn.execute("BEGIN")
 
+        # El DDL va dentro del BEGIN: si la carga falla, el rollback también
+        # restaura las tablas que había antes.
         if reemplazar:
-            conn.execute("DELETE FROM transacciones_limpias")
-            conn.execute("DELETE FROM cuarentena_errores")
+            _recrear_tabla(conn, "transacciones_limpias")
+            _recrear_tabla(conn, "cuarentena_errores")
             if filas_catalogo:
-                conn.execute("DELETE FROM catalogo_productos")
+                _recrear_tabla(conn, "catalogo_productos")
 
         if filas_catalogo:
             conn.executemany(
