@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Bases de prueba; pipeline_database.db sí se entrega
+*.db
+!pipeline_database.db
