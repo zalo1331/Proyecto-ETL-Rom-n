@@ -1,16 +1,11 @@
 """
 Pruebas de estrés de las fases 6 y 7.
 
-La idea es meterle al pipeline todo lo que puede llegar mal desde las
-fuentes (nulos, texto donde va un número, correos rotos, montos de bots,
-columnas faltantes, filas que ni siquiera son diccionarios) y comprobar
-tres cosas:
+Verifican que los registros corruptos no detienen el pipeline, que cada
+registro termina en limpios o en cuarentena, y que una carga fallida hace
+rollback completo.
 
-  1. Nunca se lanza una excepción hacia afuera.
-  2. Cada registro termina en limpios o en cuarentena, ninguno se pierde.
-  3. Si la carga a la base falla a la mitad, el rollback deja la base igual.
-
-Se ejecutan con:  pytest -v tests/test_estres.py
+Ejecución: pytest -v tests/test_estres.py
 """
 
 import json
@@ -144,7 +139,7 @@ def test_id_no_corresponde_al_canal():
     assert "no corresponde al canal" in r.cuarentena.loc[0, "motivo_rechazo_cuarentena"]
 
 
-def test_huerfano_marcado_por_integracion():
+def test_huerfano_marcado_previamente():
     r = validar_lote([registro_valido(es_huerfano=True)])  # sin catálogo
     assert "huérfano" in r.cuarentena.loc[0, "motivo_rechazo_cuarentena"]
 
@@ -198,7 +193,7 @@ def test_dataframe_vacio_y_none():
 
 
 def test_dataframe_con_nombres_originales():
-    """Si la integración deja los nombres del JSON, el alias los traduce."""
+    """Las columnas con nombres de la fuente cruda se renombran al esquema."""
     df = pd.DataFrame([{
         "order_id": "WEB-00002", "canal": "ONLINE", "order_timestamp": "2026-10-12",
         "product_id": "PROD-041", "units": 1, "unit_price": 3306.99,
@@ -231,7 +226,7 @@ def test_volumen_aleatorio_conserva_todos_los_registros():
     assert r.limpios["id_transaccion"].is_unique
 
 
-def test_rechazos_de_otras_fases():
+def test_rechazos_previos_a_cuarentena():
     df = pd.DataFrame([{"id_ticket": "POS-2026-0100", "cantidad": -1}])
     c = rechazos_a_cuarentena(df, "cantidad <= 0", "limpieza")
     assert c.loc[0, "etapa"] == "limpieza"

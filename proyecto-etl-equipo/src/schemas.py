@@ -1,18 +1,10 @@
 """
-Fase 6: validación con Pydantic y zona de cuarentena.
+Fase 6: validación con Pydantic y cuarentena.
 
-Este módulo recibe el DataFrame que sale de transformacion.py (ya unificado,
-con fechas en ISO y montos en MXN) y revisa registro por registro que cumpla
-las reglas de negocio. Lo que pasa la validación queda listo para la tabla
-transacciones_limpias; lo que no, se manda a cuarentena con el motivo del
-rechazo. Un registro malo nunca detiene el lote.
-
-Uso típico desde main.py:
-
-    from src.schemas import validar_lote
-    resultado = validar_lote(df_transformado, catalogo=ids_catalogo)
-    resultado.limpios      # DataFrame conforme
-    resultado.cuarentena   # DataFrame con motivo_rechazo_cuarentena
+Valida cada transacción contra el modelo TransaccionLimpia. Los registros
+conformes se devuelven en un DataFrame y los que no cumplen se separan en
+otro, con la causa en motivo_rechazo_cuarentena. Un registro inválido no
+detiene el procesamiento del lote.
 """
 
 from __future__ import annotations
@@ -36,16 +28,14 @@ from pydantic import (
 )
 
 # ---------------------------------------------------------------------------
-# Parámetros de negocio. Están aquí arriba para poder explicarlos y cambiarlos
-# sin buscar dentro del código.
+# Parámetros de negocio. Se definen aquí para ajustarlos sin modificar las
+# funciones.
 # ---------------------------------------------------------------------------
 
 FECHA_MINIMA = date(2020, 1, 1)
 
-# Una venta al menudeo con más de 100 piezas del mismo artículo no es normal
-# en esta cadena. En los datos crudos aparecen tickets de 500 unidades que
-# corresponden a bots o errores de captura. Si la fase 3 ya recortó outliers,
-# esta regla casi no rechaza nada; queda como segunda barrera.
+# Tope de piezas por transacción al menudeo. Valores mayores se tratan como
+# compras automatizadas o errores de captura.
 CANTIDAD_MAXIMA = 100
 
 # Diferencia permitida entre monto_total y cantidad * precio_unitario.
@@ -64,8 +54,8 @@ PATRON_CORREO = re.compile(
     r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$"
 )
 
-# Nombres que pueden traer las columnas según quién las haya generado.
-# Si la integración ya usa los nombres finales, este mapa no hace nada.
+# Equivalencias entre los nombres de columna de las fuentes crudas y los del
+# esquema.
 ALIAS_COLUMNAS = {
     "id_ticket": "id_transaccion",
     "order_id": "id_transaccion",
@@ -425,9 +415,9 @@ def validar_lote(
     """
     Separa un lote en registros conformes y registros en cuarentena.
 
-    datos     DataFrame o lista de diccionarios ya transformados.
-    catalogo  ids de producto válidos. Si se pasa, también se detectan
-              huérfanos aquí, aunque la integración no los haya marcado.
+    datos: DataFrame o lista de diccionarios ya transformados.
+    catalogo: ids de producto válidos; si se indica, los productos que no
+        aparezcan se rechazan como huérfanos.
     """
     catalogo_set = {str(c).strip().upper() for c in catalogo} if catalogo is not None else None
 
@@ -494,10 +484,8 @@ def validar_lote(
 
 def rechazos_a_cuarentena(df: pd.DataFrame, motivo: str, etapa: str) -> pd.DataFrame:
     """
-    Da formato de cuarentena a filas que otra fase decidió descartar.
-
-    Sirve para que limpieza.py (cantidades <= 0) o integracion.py (huérfanos)
-    no tiren esas filas, sino que las manden a la misma tabla con su motivo.
+    Convierte filas descartadas en otra etapa del pipeline al formato de la
+    tabla de cuarentena, indicando el motivo y la etapa.
     """
     if df is None or df.empty:
         return pd.DataFrame(columns=COLUMNAS_CUARENTENA)

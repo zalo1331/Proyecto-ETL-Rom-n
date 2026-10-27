@@ -1,7 +1,7 @@
 """
 Fase 7: carga transaccional a SQLite.
 
-Guarda en pipeline_database.db las dos tablas que pide el proyecto:
+Guarda en pipeline_database.db dos tablas principales:
 
     transacciones_limpias   registros que pasaron la validación de schemas.py
     cuarentena_errores      registros rechazados con su motivo
@@ -12,9 +12,8 @@ catálogo de productos.
 
 Las dos tablas principales se escriben dentro de una sola transacción. Si
 cualquier INSERT falla, se hace rollback y la base queda exactamente como
-estaba antes de la carga. La función no lanza la excepción hacia main.py;
-devuelve un ResultadoCarga con el estado y el error para que el pipeline
-pueda reportarlo y terminar en orden.
+estaba antes de la carga. Si la carga falla, devuelve un ResultadoCarga con
+estado ROLLBACK y el mensaje de error en lugar de lanzar la excepción.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ import pandas as pd
 
 log = logging.getLogger(__name__)
 
-# En la carpeta del proyecto, sin importar desde dónde se ejecute main.py.
+# En la carpeta del proyecto, sin importar el directorio de ejecución.
 RUTA_DB_DEFAULT = Path(__file__).resolve().parents[1] / "pipeline_database.db"
 
 DDL = """
@@ -255,7 +254,7 @@ def _cerrar_bitacora(conn, id_carga, estado, n_limpias, n_cuarentena, mensaje) -
 
 
 def resumen_bd(ruta_db: str | Path = RUTA_DB_DEFAULT) -> dict:
-    """Conteos rápidos para imprimir al final del pipeline o en la defensa."""
+    """Conteos de las tablas de la base."""
     conn = conectar(ruta_db)
     try:
         def uno(sql):
